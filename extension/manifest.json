@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "ローカル翻訳",
+  "description": "手元の翻訳モデルでWebページを翻訳します。翻訳する文章は外部に送信されません。",
+  "version": "1.0.0",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "tabs",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8788/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "shared.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ローカル翻訳"
+  },
+  "commands": {
+    "toggle-page": {
+      "suggested_key": {
+        "default": "Alt+P"
+      },
+      "description": "ページを翻訳 / 原文に戻す"
+    },
+    "toggle-hover": {
+      "suggested_key": {
+        "default": "Alt+H"
+      },
+      "description": "原文のホバー表示を切り替え"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect width="128" height="128" rx="28" fill="#0f766e"/>
+  <text x="40" y="60" font-family="Helvetica, Arial, sans-serif" font-size="46" font-weight="700" fill="#fff" text-anchor="middle">A</text>
+  <text x="88" y="106" font-family="Hiragino Sans, sans-serif" font-size="44" font-weight="700" fill="#ccfbf1" text-anchor="middle">あ</text>
+  <path d="M64 44 h18 a8 8 0 0 1 8 8 v8 m-7 -6 l7 7 l7 -7" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
