@@ -1,6 +1,14 @@
 import { Wllama, LoggerWithoutDebug } from "./vendor/wllama/index.js";
 
-var wllama = new Wllama({ default: "vendor/wllama/wllama.wasm" }, { logger: LoggerWithoutDebug });
+// PLaMo の語彙は </s> を通常トークンとして持つため、llama.cpp が読み込み時に型の補正を
+// 警告する。動作には影響せず chrome://extensions のエラー欄を埋めるだけなので捨てる。
+var logger = {
+  ...LoggerWithoutDebug,
+  warn: function (...args) {
+    if (!String(args[0]).startsWith("load:")) console.warn(...args);
+  },
+};
+var wllama = new Wllama({ default: "vendor/wllama/wllama.wasm" }, { logger: logger });
 var loading = null;
 var progress = 0;
 
