@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ローカル翻訳",
-  "description": "手元の翻訳モデルでWebページを翻訳します。翻訳する文章は外部に送信されません。",
+  "description": "拡張に組み込んだ翻訳モデルでWebページを翻訳します。翻訳する文章は外部に送信されません。",
   "version": "1.0.0",
   "icons": {
     "16": "icon16.png",
@@ -11,10 +11,12 @@
   "permissions": [
     "storage",
     "tabs",
-    "contextMenus"
+    "contextMenus",
+    "offscreen"
   ],
   "host_permissions": [
-    "http://127.0.0.1:8788/*"
+    "https://huggingface.co/*",
+    "https://*.hf.co/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -48,5 +50,14 @@
       },
       "description": "原文のホバー表示を切り替え"
     }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "cross_origin_embedder_policy": {
+    "value": "require-corp"
+  },
+  "cross_origin_opener_policy": {
+    "value": "same-origin"
   }
 }

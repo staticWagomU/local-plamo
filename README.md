@@ -1,23 +1,17 @@
 # local-plamo
 
-手元の Mac で動く翻訳モデル [plamo-3-translate-2b-MLX-4bit](https://huggingface.co/pfnet/plamo-3-translate-2b-MLX-4bit) を使って、Web ページを翻訳する Edge / Chrome 拡張「ローカル翻訳」。翻訳する文章は外部に送信しない。ログインも不要。
+翻訳モデル [plamo-3-translate-0.8b](https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF) (Q4_K_M) を拡張の中で動かし、Web ページを翻訳する Edge / Chrome 拡張「ローカル翻訳」。翻訳する文章は外部に送信しない。ログインもサーバーも不要。
 
 ```
-拡張 (extension/) ──▶ モデルサーバー (local-server/start.sh, 127.0.0.1:8788)
+拡張 (extension/) ─ offscreen.html ─ wllama (llama.cpp の WebAssembly 版, WebGPU 対応) ─ モデル
 ```
+
+モデル (約570MB) は最初に翻訳するときに Hugging Face から一度だけダウンロードし、ブラウザ (OPFS) にキャッシュする。通信はこのダウンロードだけ。
 
 ## 使い方
 
-前提: Apple silicon の Mac と `uv`。
-
-1. モデルサーバーを起動する。初回はモデル (約1.5GB) をダウンロードする。Ctrl+C で止まる。
-   ```sh
-   sh local-server/start.sh
-   # uv が PATH に無い場合
-   mise exec uv@latest -- sh local-server/start.sh
-   ```
-2. Edge で `edge://extensions` を開き、開発者モードを有効にして「展開して読み込み」から `extension/` を選ぶ。
-3. ツールバーのアイコンからポップアップを開き、「このページを翻訳」を押す。
+1. Edge で `edge://extensions` を開き、開発者モードを有効にして「展開して読み込み」から `extension/` を選ぶ。
+2. ツールバーのアイコンからポップアップを開き、「このページを翻訳」を押す。初回はモデルのダウンロードと読み込みを待つ (ポップアップに進捗が出る)。
 
 ## 機能
 
@@ -35,9 +29,13 @@
 ```sh
 cd test && npm install
 node --test shared.test.mjs   # 言語コード変換とリクエスト組み立て
-node e2e.mjs                  # Chromium に拡張を読み込んで全機能を確認 (モデルサーバーの起動が必要)
+node e2e.mjs                  # Chromium に拡張を読み込んで全機能を確認 (初回はモデルをダウンロードする)
 ```
+
+## wllama の更新
+
+`extension/vendor/wllama/` は [wllama](https://github.com/ngxson/wllama) のビルド成果物 (`esm/index.js` と `esm/wasm/wllama.wasm`)。PLaMo-3 のトークナイザーに対応した llama.cpp (2026-10-06 以降) が要るため、npm 版 3.8.1 ではなく master (33b4346) をビルドしたものを置いている。`npm run build:wasm && npm run build` (Docker が必要) の成果物で置き換える。
 
 ## ライセンス
 
-モデルは PLaMo Community License。個人利用・非商用利用は無料。
+モデルは PLaMo Community License。個人利用・非商用利用は無料。wllama は MIT (`extension/vendor/wllama/LICENCE`)。

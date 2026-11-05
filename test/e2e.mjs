@@ -1,11 +1,8 @@
-// 拡張を Chromium に読み込み、実際のモデルサーバー (:8788) を使って各機能を確かめる。
-// 先に local-server/start.sh を起動しておくこと。
+// 拡張を Chromium に読み込み、拡張内の翻訳モデルを実際に動かして各機能を確かめる。
+// 初回はモデル (約570MB) をダウンロードする。プロファイルは .profile/ に残し、2回目以降はキャッシュを使う。
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { tmpdir } from "node:os";
-import { mkdtempSync } from "node:fs";
-import { join } from "node:path";
 import { chromium } from "playwright";
 
 const extensionPath = new URL("../extension", import.meta.url).pathname;
@@ -14,12 +11,13 @@ const server = createServer((req, res) => res.end(fixture)).listen(0, "127.0.0.1
 await new Promise((r) => server.once("listening", r));
 const url = `http://127.0.0.1:${server.address().port}/`;
 
-const context = await chromium.launchPersistentContext(mkdtempSync(join(tmpdir(), "lt-e2e-")), {
+const context = await chromium.launchPersistentContext(new URL(".profile", import.meta.url).pathname, {
   channel: "chromium",
   headless: true,
   args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
 });
 const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+await worker.evaluate(() => chrome.storage.sync.clear());
 const page = await context.newPage();
 const japanese = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u;
 const html = (sel) => page.$eval(sel, (el) => el.innerHTML);
@@ -41,7 +39,7 @@ try {
 
   await step("Alt+P 相当でページが翻訳され、リンクの href が残る", async () => {
     await togglePage();
-    await page.waitForSelector("#p1 .lt-translated", { timeout: 60000 });
+    await page.waitForSelector("#p1 .lt-translated", { timeout: 15 * 60000 });
     assert.match(await text("#p1"), japanese);
     assert.equal(await page.$eval("#p1 a", (a) => a.getAttribute("href")), "https://example.com/guide");
     assert.equal(await page.$eval("#p1 a", (a) => a.className), "link");
@@ -156,6 +154,13 @@ try {
     await worker.evaluate(() => chrome.storage.sync.set({ autoLangs: ["en"] }));
     await page.reload();
     await page.waitForSelector("#p1 .lt-translated", { timeout: 60000 });
+  });
+
+  await step("ポップアップに読み込み済みのモデルの状態が出る", async () => {
+    const popup = await context.newPage();
+    await popup.goto(`chrome-extension://${new URL(worker.url()).host}/popup.html`);
+    await popup.waitForFunction(() => document.getElementById("status").textContent === "● モデル準備完了");
+    await popup.close();
   });
 } finally {
   await context.close();

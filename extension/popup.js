@@ -100,9 +100,13 @@
 
   render();
 
-  chrome.runtime.sendMessage({ type: "health" }).then(function (res) {
-    $("status").textContent = res.ok ? "● モデル接続中" : "● モデル未起動";
-    $("status").className = res.ok ? "ok" : "ng";
-    $("status").title = res.ok ? "" : "local-server/start.sh を起動してください";
+  chrome.runtime.sendMessage({ type: "status" }).then(function (res) {
+    $("status").textContent = res.ready
+      ? "● モデル準備完了"
+      : res.progress > 0
+        ? "● モデル読み込み中 " + Math.floor(res.progress * 100) + "%"
+        : "● モデル未読み込み";
+    $("status").className = res.ready ? "ok" : "ng";
+    $("status").title = res.ready ? "" : "最初の翻訳でモデルを読み込みます (初回のみ約570MBをダウンロード)";
   });
 })();

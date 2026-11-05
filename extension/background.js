@@ -1,7 +1,7 @@
 importScripts("shared.js");
 
-// serve.py の既定 --decode-concurrency と同じ数だけ並列に投げる
-var CONCURRENCY = 4;
+// wllama はひとつのコンテキストで1件ずつしか推論できない
+var CONCURRENCY = 1;
 var running = 0;
 var waiting = [];
 var pendingByTab = new Map();
@@ -35,27 +35,31 @@ async function translate(text, context, tabId) {
   updateBadge(tabId, 1);
   await acquire();
   try {
-    var res = await fetch(MODEL_URL + "/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(chatRequest(text, context, settings)),
-    });
-    if (!res.ok) throw new Error("モデルサーバーがエラーを返しました (" + res.status + ")");
-    var data = await res.json();
-    return data.choices[0].message.content;
+    await ensureOffscreen();
+    var res = await chrome.runtime.sendMessage({ target: "offscreen", type: "translate", body: chatRequest(text, context, settings) });
+    if (res.error) throw new Error(res.error);
+    return res.text;
   } finally {
     release();
     updateBadge(tabId, -1);
   }
 }
 
-async function health() {
-  try {
-    var res = await fetch(MODEL_URL + "/v1/models");
-    return res.ok;
-  } catch (e) {
-    return false;
-  }
+var creatingOffscreen = null;
+
+async function ensureOffscreen() {
+  if (await chrome.offscreen.hasDocument()) return;
+  creatingOffscreen ??= chrome.offscreen
+    .createDocument({ url: "offscreen.html", reasons: ["WORKERS"], justification: "翻訳モデルをワーカーで実行する" })
+    .finally(function () {
+      creatingOffscreen = null;
+    });
+  await creatingOffscreen;
+}
+
+async function modelStatus() {
+  if (!(await chrome.offscreen.hasDocument())) return { ready: false, progress: 0 };
+  return chrome.runtime.sendMessage({ target: "offscreen", type: "status" });
 }
 
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
@@ -65,20 +69,13 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
         sendResponse({ text: text });
       },
       function (e) {
-        var offline = e instanceof TypeError;
-        sendResponse({
-          error: offline
-            ? "ローカルのモデルサーバーに接続できません。local-server/start.sh を起動してください。"
-            : String(e.message || e),
-        });
+        sendResponse({ error: String(e.message || e) });
       }
     );
     return true;
   }
-  if (msg.type === "health") {
-    health().then(function (ok) {
-      sendResponse({ ok: ok });
-    });
+  if (msg.type === "status") {
+    modelStatus().then(sendResponse);
     return true;
   }
 });

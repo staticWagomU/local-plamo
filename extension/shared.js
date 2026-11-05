@@ -1,7 +1,8 @@
 // service worker・コンテンツスクリプト・ポップアップで共有する定義。
 // コンテンツスクリプトは ES モジュールにできないため、グローバル宣言で共有する。
 
-var MODEL_URL = "http://127.0.0.1:8788";
+// 拡張内で動かす翻訳モデル (Hugging Face から初回だけ取得し、ブラウザにキャッシュする)
+var MODEL = { repo: "pfnet/plamo-3-translate-0.8b-GGUF", file: "plamo-3-translate-0.8b-Q4_K_M.gguf" };
 
 var DEFAULT_SETTINGS = {
   targetLang: "ja",
@@ -44,7 +45,7 @@ function toModelLang(tag) {
   return Object.prototype.hasOwnProperty.call(LANGUAGES, code) ? code : null;
 }
 
-/** serve.py の /v1/chat/completions に送る本文。 */
+/** wllama の createChatCompletion に渡す引数。chat_template_kwargs はモデル同梱のチャットテンプレートが解釈する。 */
 function chatRequest(text, context, settings) {
   var kwargs = { target_lang: settings.targetLang };
   if (context) kwargs.context = context;
