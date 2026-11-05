@@ -39,11 +39,21 @@ try {
 
   await step("Alt+P 相当でページが翻訳され、リンクの href が残る", async () => {
     await togglePage();
+    const toast = await page.$eval("local-translator-ui", (ui) => {
+      const t = ui.shadowRoot.getElementById("toast");
+      return { hidden: t.hidden, text: t.textContent };
+    });
+    assert.deepEqual(toast, { hidden: false, text: "日本語に翻訳しています…" });
     await page.waitForSelector("#p1 .lt-translated", { timeout: 15 * 60000 });
     assert.match(await text("#p1"), japanese);
     assert.equal(await page.$eval("#p1 a", (a) => a.getAttribute("href")), "https://example.com/guide");
     assert.equal(await page.$eval("#p1 a", (a) => a.className), "link");
     assert.match(await html("#p1"), /<code>npm install<\/code>/);
+    await page.waitForFunction(
+      () => document.querySelector("local-translator-ui").shadowRoot.getElementById("toast").textContent === "翻訳が完了しました",
+      null,
+      { timeout: 5 * 60000 }
+    );
   });
 
   await step("入れ子のリストとリンク内のブロックも訳される", async () => {

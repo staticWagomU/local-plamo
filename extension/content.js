@@ -24,6 +24,8 @@
   var originals = new WeakMap(); // 訳文 span -> 原文ノード配列
   var pendingRuns = new Map(); // 監視中の要素 -> まだ訳していない run の配列
   var errorShown = false;
+  var inflight = 0; // 応答待ちの翻訳リクエスト数 (現在の generation の分だけ数える)
+  var doneShown = false;
 
   var visibility = new IntersectionObserver(
     function (entries) {
@@ -153,8 +155,15 @@
     if (!run.nodes.every(function (n) { return n.parentNode === run.parent; })) return;
     var inlines = [];
     var source = serialize(run.nodes, inlines);
+    inflight++;
     request(source).then(function (res) {
       if (gen !== generation || state !== "translated") return;
+      inflight--;
+      // ponytail: 完了通知は翻訳開始ごとに1回だけ。スクロールや動的追加で後から訳す分は通知しない (ツールバーのバッジで見える)
+      if (inflight === 0 && !doneShown && !errorShown && !res.error) {
+        doneShown = true;
+        showToast("翻訳が完了しました");
+      }
       if (res.error) return showError(res.error);
       if (!run.nodes.every(function (n) { return n.parentNode === run.parent; })) return;
       var parsed = new DOMParser().parseFromString("<body>" + res.text + "</body>", "text/html").body;
@@ -181,6 +190,9 @@
     state = "translated";
     generation++;
     errorShown = false;
+    inflight = 0;
+    doneShown = false;
+    showToast(LANGUAGES[settings.targetLang] + "に翻訳しています…");
     queueRoot(document.body);
     mutations.observe(document.body, { childList: true, subtree: true });
   }
