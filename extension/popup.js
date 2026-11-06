@@ -100,13 +100,34 @@
 
   render();
 
-  chrome.runtime.sendMessage({ type: "status" }).then(function (res) {
-    $("status").textContent = res.ready
-      ? "● モデル準備完了"
-      : res.progress > 0
-        ? "● モデル読み込み中 " + Math.floor(res.progress * 100) + "%"
-        : "● モデル未読み込み";
-    $("status").className = res.ready ? "ok" : "ng";
-    $("status").title = res.ready ? "" : "最初の翻訳でモデルを読み込みます (初回のみ約570MBをダウンロード)";
+  var statusTimer;
+  var closed = false;
+  window.addEventListener("pagehide", function () {
+    closed = true;
+    clearTimeout(statusTimer);
   });
+  async function updateStatus() {
+    try {
+      var res = await chrome.runtime.sendMessage({ type: "status" });
+      if (!res) throw new Error("モデルの状態を取得できませんでした");
+      $("status").textContent = res.ready
+        ? "● モデル準備完了"
+        : res.state === "error"
+          ? "● モデルの読み込みに失敗しました"
+          : res.state === "loading"
+            ? res.progress >= 1
+              ? "● モデル初期化中…"
+              : "● モデル読み込み中 " + Math.floor(res.progress * 100) + "%"
+            : "● モデル未読み込み";
+      $("status").className = res.ready ? "ok" : "ng";
+      $("status").title = res.error || (res.ready ? "" : "最初の翻訳でモデルを読み込みます (保存済みなら通信不要)");
+    } catch (e) {
+      $("status").textContent = "● モデルの状態を取得できません";
+      $("status").className = "ng";
+      $("status").title = String(e.message || e);
+    } finally {
+      if (!closed) statusTimer = setTimeout(updateStatus, 500);
+    }
+  }
+  updateStatus();
 })();

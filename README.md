@@ -6,7 +6,7 @@
 拡張 (extension/) ─ offscreen.html ─ wllama (llama.cpp の WebAssembly 版, WebGPU 対応) ─ モデル
 ```
 
-モデル (約570MB) は最初に翻訳するときに Hugging Face から一度だけダウンロードし、ブラウザ (OPFS) にキャッシュする。通信はこのダウンロードだけ。
+モデル (約570MB) は最初に翻訳するときに Hugging Face からダウンロードし、ブラウザ (OPFS) にキャッシュする。以降はキャッシュを先に確認し、保存済みなら HF への問い合わせなしで読み込み・翻訳できる。キャッシュが削除された場合は再ダウンロードする。
 
 ## 使い方
 
@@ -28,8 +28,9 @@
 
 ```sh
 cd test && npm install
-node --test shared.test.mjs   # 言語コード変換とリクエスト組み立て
+node --test *.test.mjs        # 言語コード変換、モデル読み込み・再試行、状態表示
 node e2e.mjs                  # Chromium に拡張を読み込んで全機能を確認 (初回はモデルをダウンロードする)
+E2E_OFFLINE=1 node e2e.mjs    # 同じプロファイルのモデルキャッシュで、外部通信を遮断して確認
 ```
 
 ## wllama の更新

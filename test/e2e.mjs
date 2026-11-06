@@ -17,6 +17,14 @@ const context = await chromium.launchPersistentContext(new URL(".profile", impor
   args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
 });
 const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+const externalRequests = [];
+if (process.env.E2E_OFFLINE === "1") {
+  await context.route(/^https?:\/\//, async (route) => {
+    if (new URL(route.request().url()).hostname === "127.0.0.1") return route.continue();
+    externalRequests.push(route.request().url());
+    await route.abort();
+  });
+}
 await worker.evaluate(() => chrome.storage.sync.clear());
 const page = await context.newPage();
 const japanese = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u;
@@ -172,6 +180,10 @@ try {
     await popup.waitForFunction(() => document.getElementById("status").textContent === "● モデル準備完了");
     await popup.close();
   });
+  if (process.env.E2E_OFFLINE === "1") {
+    assert.deepEqual(externalRequests, [], "保存済みモデルの読み込みと翻訳は外部通信しない");
+    console.log("ok - 外部通信を遮断しても全機能が動作し、外部へのリクエストがない");
+  }
 } finally {
   await context.close();
   server.close();

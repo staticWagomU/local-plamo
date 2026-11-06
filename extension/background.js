@@ -58,7 +58,7 @@ async function ensureOffscreen() {
 }
 
 async function modelStatus() {
-  if (!(await chrome.offscreen.hasDocument())) return { ready: false, progress: 0 };
+  if (!(await chrome.offscreen.hasDocument())) return { ready: false, state: "idle", progress: 0, error: null };
   return chrome.runtime.sendMessage({ target: "offscreen", type: "status" });
 }
 
@@ -75,7 +75,9 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     return true;
   }
   if (msg.type === "status") {
-    modelStatus().then(sendResponse);
+    modelStatus().then(sendResponse, function (e) {
+      sendResponse({ ready: false, state: "error", progress: 0, error: String(e.message || e) });
+    });
     return true;
   }
 });
