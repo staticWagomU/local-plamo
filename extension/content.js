@@ -178,11 +178,16 @@
     });
   }
 
-  function request(text) {
+  async function request(text) {
     var context = document.title ? "Title: " + document.title : "";
-    return chrome.runtime.sendMessage({ type: "translate", text: text, context: context }).catch(function (e) {
-      return { error: String(e.message || e) };
-    });
+    try {
+      return await chrome.runtime.sendMessage({ type: "translate", text: text, context: context });
+    } catch (e) {
+      var message = String(e.message || e);
+      return { error: message.includes("Extension context invalidated")
+        ? "拡張機能が更新または再読み込みされました。このページを再読み込みしてから翻訳してください。"
+        : message };
+    }
   }
 
   function translatePage() {

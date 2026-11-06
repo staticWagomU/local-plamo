@@ -184,6 +184,26 @@ try {
     assert.deepEqual(externalRequests, [], "保存済みモデルの読み込みと翻訳は外部通信しない");
     console.log("ok - 外部通信を遮断しても全機能が動作し、外部へのリクエストがない");
   }
+  await step("拡張を再読み込みした後の古い翻訳ボタンはページ再読み込みを案内する", async () => {
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.$eval("#keep", el => {
+      el.scrollIntoView();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, composed: true }));
+    });
+    await page.waitForFunction(() => !document.querySelector("local-translator-ui").shadowRoot.getElementById("sel").hidden);
+    const stopped = worker.waitForEvent("close", { timeout: 10000 });
+    await worker.evaluate(() => chrome.runtime.reload());
+    await stopped;
+    await page.$eval("local-translator-ui", ui => ui.shadowRoot.getElementById("sel").click());
+    await page.waitForFunction(() => document.querySelector("local-translator-ui").shadowRoot.getElementById("panel").textContent.includes("このページを再読み込み"));
+    assert.deepEqual(errors, [], "無効化されたコンテキストからの例外が未処理にならない");
+  });
 } finally {
   await context.close();
   server.close();
