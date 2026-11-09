@@ -12,8 +12,16 @@ vm.runInContext(vendorSource.slice(0, vendorSource.lastIndexOf("export {")), ven
 const modelURL = "https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF/resolve/main/plamo-3-translate-0.8b-Q4_K_M.gguf";
 const blob = new Blob(["cached model fixture"]);
 
-function offscreen({ cached = true, failOnce = false, constructorFails = false, gate } = {}) {
+function offscreen({ cached = true, failOnce = false, constructorFails = false, gate, free = 1e12 } = {}) {
   let listener;
+  const cacheManager = {
+    list: async () => cached ? [{ name: "cached.gguf", size: blob.size,
+      metadata: { originalURL: modelURL, originalSize: blob.size } }] : [],
+    open: async () => blob,
+  };
+  class ModelManager extends vendor.ModelManager {
+    constructor() { super({ cacheManager }); }
+  }
   let downloads = 0;
   let exits = 0;
   const instances = [];
@@ -24,11 +32,7 @@ function offscreen({ cached = true, failOnce = false, constructorFails = false, 
         throw new Error("constructor failed");
       }
       instances.push(this);
-      this.modelManager = new vendor.ModelManager({ cacheManager: {
-        list: async () => cached ? [{ name: "cached.gguf", size: blob.size,
-          metadata: { originalURL: modelURL, originalSize: blob.size } }] : [],
-        open: async () => blob,
-      } });
+      this.modelManager = new ModelManager();
       this.modelManager.downloadModel = async (source, options) => {
         assert.equal(source.url, modelURL);
         downloads++;
@@ -47,12 +51,13 @@ function offscreen({ cached = true, failOnce = false, constructorFails = false, 
     async exit() { exits++; this.proxy = null; }
     async createChatCompletion() { return { choices: [{ message: { content: "こんにちは" } }] }; }
   }
-  const ctx = vm.createContext({ console, Wllama, LoggerWithoutDebug: console,
+  const ctx = vm.createContext({ console, Wllama, ModelManager, LoggerWithoutDebug: console,
+    navigator: { storage: { estimate: async () => ({ quota: free, usage: 0 }) } },
     chrome: { runtime: { onMessage: { addListener(fn) { listener = fn; } } } },
   });
   vm.runInContext(read("shared.js"), ctx);
   vm.runInContext(read("offscreen.js").replace(/^import .*;\n/, ""), ctx);
-  const send = (type) => new Promise(resolve => listener({ target: "offscreen", type, body: {} }, {}, resolve));
+  const send = (type, extra) => new Promise(resolve => listener({ target: "offscreen", type, body: {}, ...extra }, {}, resolve));
   return { send, instances, stats: () => ({ downloads, exits }) };
 }
 
@@ -68,8 +73,37 @@ test("保存済みモデルは HF API・外部通信なしで読み込み、再�
 
 test("キャッシュがない場合だけ固定 URL のモデルをダウンロードする", async () => {
   const app = offscreen({ cached: false });
-  assert.equal((await app.send("translate")).text, "こんにちは");
+  assert.equal((await app.send("translate", { download: true })).text, "こんにちは");
   await app.send("translate");
+  assert.equal(app.stats().downloads, 1);
+});
+
+test("同意がなく未保存なら absent と報告し、ダウンロードせずに案内する", async () => {
+  const app = offscreen({ cached: false });
+  assert.equal((await app.send("status")).state, "absent");
+  assert.match((await app.send("translate")).error, /まだダウンロードされていません/);
+  assert.equal((await app.send("status")).state, "absent");
+  assert.equal(app.stats().downloads, 0);
+});
+
+test("空き容量が足りなければダウンロードせず、理由を失敗として報告する", async () => {
+  const app = offscreen({ cached: false, free: 100e6 });
+  assert.match((await app.send("translate", { download: true })).error, /空き容量が足りません/);
+  const status = await app.send("status");
+  assert.equal(status.state, "error");
+  assert.match(status.error, /空き容量/);
+  assert.equal(app.stats().downloads, 0);
+});
+
+test("load は翻訳せずにダウンロードを始め、取得中は downloading と報告する", async () => {
+  let finish;
+  const app = offscreen({ cached: false, gate: new Promise(resolve => { finish = resolve; }) });
+  await app.send("load");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal((await app.send("status")).state, "downloading");
+  finish();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal((await app.send("status")).state, "ready");
   assert.equal(app.stats().downloads, 1);
 });
 
@@ -99,7 +133,6 @@ test("初期化中は loading と報告し、読み込みを重複起動しな�
   const second = app.send("translate");
   await new Promise(resolve => setImmediate(resolve));
   const status = await app.send("status");
-  assert.equal(status.ready, false);
   assert.equal(status.state, "loading");
   assert.equal(status.progress, 1);
   assert.equal(app.instances.length, 1);
@@ -115,7 +148,7 @@ test("ポップアップは未開始・初期化中・失敗・準備完了を�
   };
   let timer;
   let onClose;
-  let response = { ready: false, state: "idle", progress: 0 };
+  let response = { state: "idle", progress: 0 };
   const ctx = vm.createContext({ URL, Option: function () {},
     document: { getElementById: get },
     window: { addEventListener(name, fn) { assert.equal(name, "pagehide"); onClose = fn; } },
@@ -130,16 +163,20 @@ test("ポップアップは未開始・初期化中・失敗・準備完了を�
   vm.runInContext(read("popup.js"), ctx);
   await new Promise(resolve => setImmediate(resolve));
   assert.match(get("status").textContent, /未読み込み/);
-  for (const [res, expected] of [
-    [{ state: "loading", progress: 0 }, /読み込み中 0%/],
-    [{ state: "loading", progress: 1 }, /初期化中/],
-    [{ state: "error", error: "GPU error" }, /失敗/],
-    [new Error("connection lost"), /状態を取得できません/],
-    [{ ready: true, state: "ready" }, /準備完了/],
+  assert.equal(get("toggle").textContent, "このページを翻訳");
+  for (const [res, expected, toggle, retryHidden = true] of [
+    [{ state: "absent" }, /未ダウンロード/, "モデルをダウンロード (約573MB)"],
+    [{ state: "downloading", progress: 0 }, /ダウンロード中 0%/, "このページを翻訳"],
+    [{ state: "loading", progress: 1 }, /初期化中/, "このページを翻訳"],
+    [{ state: "error", error: "GPU error" }, /失敗/, "このページを翻訳", false],
+    [new Error("connection lost"), /状態を取得できません/, "このページを翻訳"],
+    [{ state: "ready" }, /準備完了/, "このページを翻訳"],
   ]) {
     response = res;
     await timer();
     assert.match(get("status").textContent, expected);
+    assert.equal(get("toggle").textContent, toggle);
+    assert.equal(get("retry").hidden, retryHidden);
     if (res.error) assert.equal(get("status").title, res.error);
   }
   onClose();

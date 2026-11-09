@@ -200,6 +200,30 @@
     showToast(LANGUAGES[settings.targetLang] + "に翻訳しています…");
     queueRoot(document.body);
     mutations.observe(document.body, { childList: true, subtree: true });
+    watchProgress(generation);
+  }
+
+  // 最初の訳が返るまでトーストを出し続ける。初回はモデルの取得に数分かかり、消えると止まったように見えるため。
+  async function watchProgress(gen) {
+    var busy = function () {
+      return gen === generation && state === "translated" && !doneShown && !errorShown;
+    };
+    while (busy()) {
+      var model = null;
+      try {
+        model = await chrome.runtime.sendMessage({ type: "status" });
+      } catch (e) {}
+      if (!busy()) return;
+      showToast(
+        model && (model.state === "downloading" || model.state === "loading")
+          ? statusText(model)
+          : LANGUAGES[settings.targetLang] + "に翻訳しています…",
+        1500
+      );
+      await new Promise(function (resolve) {
+        setTimeout(resolve, 500);
+      });
+    }
   }
 
   function restorePage() {

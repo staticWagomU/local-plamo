@@ -2,7 +2,12 @@
 // コンテンツスクリプトは ES モジュールにできないため、グローバル宣言で共有する。
 
 // 拡張内で動かす翻訳モデル (Hugging Face から初回だけ取得し、ブラウザにキャッシュする)
-var MODEL = { repo: "pfnet/plamo-3-translate-0.8b-GGUF", file: "plamo-3-translate-0.8b-Q4_K_M.gguf" };
+// size はファイルの実サイズ。ダウンロード前の空き容量確認と表示に使う
+var MODEL = { repo: "pfnet/plamo-3-translate-0.8b-GGUF", file: "plamo-3-translate-0.8b-Q4_K_M.gguf", size: 573125952 };
+
+function mb(bytes) {
+  return Math.floor(bytes / 1e6) + "MB";
+}
 
 var DEFAULT_SETTINGS = {
   targetLang: "ja",
@@ -60,4 +65,18 @@ function chatRequest(text, context, settings) {
 
 function loadSettings() {
   return chrome.storage.sync.get(DEFAULT_SETTINGS);
+}
+
+/** オフスクリーンが報告するモデルの状態を、ポップアップ・ウェルカムページ・トーストに出す文言にする。 */
+function statusText(s) {
+  if (s.state === "downloading" || s.state === "loading") {
+    if (s.progress >= 1) return "モデル初期化中…";
+    var verb = s.state === "downloading" ? "モデルをダウンロード中 " : "モデル読み込み中 ";
+    return verb + Math.floor(s.progress * 100) + "%";
+  }
+  return {
+    absent: "モデル未ダウンロード",
+    ready: "モデル準備完了",
+    error: "モデルの読み込みに失敗しました",
+  }[s.state] || "モデル未読み込み";
 }

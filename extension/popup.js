@@ -9,6 +9,7 @@
     var u = new URL(tab.url);
     if (u.protocol === "http:" || u.protocol === "https:") host = u.hostname;
   } catch (e) {}
+  var model = { state: "idle" };
   var page = await chrome.tabs.sendMessage(tab.id, { type: "page-info" }).catch(function () {
     return null;
   });
@@ -55,8 +56,12 @@
       })
     );
 
-    $("toggle").disabled = !page;
-    $("toggle").textContent = !page
+    $("retry").hidden = model.state !== "error";
+    // ダウンロードはページと無関係なので、翻訳できないページでも押せるようにする
+    $("toggle").disabled = !page && model.state !== "absent";
+    $("toggle").textContent = model.state === "absent"
+      ? "モデルをダウンロード (約" + mb(MODEL.size) + ")"
+      : !page
       ? "このページは翻訳できません"
       : page.state === "idle"
         ? "このページを翻訳"
@@ -87,7 +92,14 @@
   $("autoLang").onchange = function (e) {
     save({ autoLangs: toggled(settings.autoLangs, page.lang, e.target.checked) }).then(render);
   };
+  function download() {
+    chrome.runtime.sendMessage({ type: "download-model" });
+    model = { state: "downloading", progress: 0 };
+    render();
+  }
+  $("retry").onclick = download;
   $("toggle").onclick = function () {
+    if (model.state === "absent") return download();
     var next = page.state === "idle" ? "translated" : "idle";
     chrome.tabs.sendMessage(tab.id, { type: next === "idle" ? "restore-page" : "translate-page" });
     page.state = next;
@@ -110,22 +122,17 @@
     try {
       var res = await chrome.runtime.sendMessage({ type: "status" });
       if (!res) throw new Error("モデルの状態を取得できませんでした");
-      $("status").textContent = res.ready
-        ? "● モデル準備完了"
-        : res.state === "error"
-          ? "● モデルの読み込みに失敗しました"
-          : res.state === "loading"
-            ? res.progress >= 1
-              ? "● モデル初期化中…"
-              : "● モデル読み込み中 " + Math.floor(res.progress * 100) + "%"
-            : "● モデル未読み込み";
-      $("status").className = res.ready ? "ok" : "ng";
-      $("status").title = res.error || (res.ready ? "" : "最初の翻訳でモデルを読み込みます (保存済みなら通信不要)");
+      model = res;
+      $("status").textContent = "● " + statusText(res);
+      $("status").className = res.state === "ready" ? "ok" : "ng";
+      $("status").title = res.error || (res.state === "idle" ? "最初の翻訳で保存済みのモデルを読み込みます (通信不要)" : "");
     } catch (e) {
       $("status").textContent = "● モデルの状態を取得できません";
       $("status").className = "ng";
       $("status").title = String(e.message || e);
+      model = { state: "unknown" };
     } finally {
+      render();
       if (!closed) statusTimer = setTimeout(updateStatus, 500);
     }
   }

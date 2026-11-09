@@ -15,6 +15,7 @@
   #toggle { width: 100%; margin: 8px 0 12px; padding: 8px; border: none; border-radius: 6px;
     background: #0f766e; color: #fff; font-size: 14px; cursor: pointer; }
   #toggle:disabled { background: #9fb3c8; cursor: default; }
+  #retry { margin-left: 6px; padding: 0 6px; font-size: 11px; cursor: pointer; }
   fieldset { margin: 10px 0 0; padding: 6px 10px; border: 1px solid #d9e2ec; border-radius: 6px; }
   legend { padding: 0 4px; color: #52606d; font-size: 12px; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
@@ -25,7 +26,7 @@
 </style>
 </head>
 <body>
-  <h1><img src="icon48.png" alt="">ローカル翻訳<span id="status"></span></h1>
+  <h1><img src="icon48.png" alt="">ローカル翻訳<span id="status"></span><button id="retry" hidden>再試行</button></h1>
 
   <label>翻訳先 <select id="targetLang"></select></label>
   <label id="formRow">文体

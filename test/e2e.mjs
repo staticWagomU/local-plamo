@@ -45,6 +45,32 @@ try {
   await page.waitForFunction(() => window.__localTranslatorLoaded !== undefined || document.querySelector("local-translator-ui"));
   const before = await page.$eval("body", (b) => b.innerHTML);
 
+  await step("同意前はダウンロードせずに案内し、ウェルカムページから取得できる", async () => {
+    await worker.evaluate(() => chrome.storage.local.remove("modelConsent"));
+    const welcome = await context.newPage();
+    await welcome.goto(`chrome-extension://${new URL(worker.url()).host}/welcome.html`);
+    const { state } = await welcome.evaluate(() => chrome.runtime.sendMessage({ type: "status" }));
+    console.log("  モデルの状態:", state, "/ 開いているタブ:", context.pages().map((p) => p.url()).join(", "));
+    if (state === "absent") {
+      await welcome.waitForSelector("#ask", { state: "visible" });
+      await page.bringToFront();
+      await togglePage();
+      await page.waitForFunction(
+        () => document.querySelector("local-translator-ui").shadowRoot.getElementById("toast").textContent.includes("まだダウンロードされていません"),
+        null,
+        { timeout: 30000 }
+      );
+      await togglePage();
+      assert.equal((await welcome.evaluate(() => chrome.runtime.sendMessage({ type: "status" }))).state, "absent");
+      await welcome.click("#download");
+      await welcome.waitForSelector("#progressBox", { state: "visible" });
+      await welcome.waitForFunction(() => /ダウンロード中 [1-9]/.test(document.getElementById("progressText").textContent), null, { timeout: 5 * 60000 });
+    }
+    await welcome.waitForSelector("#done", { state: "visible", timeout: 15 * 60000 });
+    await welcome.close();
+    await page.bringToFront();
+  });
+
   await step("Alt+P 相当でページが翻訳され、リンクの href が残る", async () => {
     await togglePage();
     const toast = await page.$eval("local-translator-ui", (ui) => {

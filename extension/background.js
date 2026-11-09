@@ -36,7 +36,11 @@ async function translate(text, context, tabId) {
   await acquire();
   try {
     await ensureOffscreen();
-    var res = await chrome.runtime.sendMessage({ target: "offscreen", type: "translate", body: chatRequest(text, context, settings) });
+    // 同意前はダウンロードしない (保存済みなら同意なしでも読み込む)
+    var { modelConsent } = await chrome.storage.local.get({ modelConsent: false });
+    var res = await chrome.runtime.sendMessage({
+      target: "offscreen", type: "translate", download: modelConsent, body: chatRequest(text, context, settings),
+    });
     if (res.error) throw new Error(res.error);
     return res.text;
   } finally {
@@ -57,9 +61,16 @@ async function ensureOffscreen() {
   await creatingOffscreen;
 }
 
+// 未ダウンロードかどうかは OPFS を見るオフスクリーンしか知らないため、状態の問い合わせでも作る
 async function modelStatus() {
-  if (!(await chrome.offscreen.hasDocument())) return { ready: false, state: "idle", progress: 0, error: null };
+  await ensureOffscreen();
   return chrome.runtime.sendMessage({ target: "offscreen", type: "status" });
+}
+
+async function downloadModel() {
+  await chrome.storage.local.set({ modelConsent: true });
+  await ensureOffscreen();
+  return chrome.runtime.sendMessage({ target: "offscreen", type: "load" });
 }
 
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
@@ -76,13 +87,20 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   }
   if (msg.type === "status") {
     modelStatus().then(sendResponse, function (e) {
-      sendResponse({ ready: false, state: "error", progress: 0, error: String(e.message || e) });
+      sendResponse({ state: "error", progress: 0, error: String(e.message || e) });
+    });
+    return true;
+  }
+  if (msg.type === "download-model") {
+    downloadModel().then(sendResponse, function (e) {
+      sendResponse({ error: String(e.message || e) });
     });
     return true;
   }
 });
 
-chrome.runtime.onInstalled.addListener(function () {
+chrome.runtime.onInstalled.addListener(function (details) {
+  if (details.reason === "install") chrome.tabs.create({ url: "welcome.html" });
   chrome.contextMenus.removeAll(function () {
     chrome.contextMenus.create({ id: "toggle-page", title: "このページを翻訳 / 原文に戻す", contexts: ["page"] });
     chrome.contextMenus.create({ id: "translate-selection", title: "「%s」を翻訳", contexts: ["selection"] });
